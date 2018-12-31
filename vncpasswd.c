@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <sys/stat.h>
 
 #include "d3des.h"
 
@@ -10,7 +11,7 @@ char *decrypt(char *ibuf, char *obuf) {
   if (strlen(ibuf) < 8)
   {
     fprintf(stderr, "bad password length\n");
-	return NULLL;
+	return NULL;
   }
   deskey(d3desObfuscationKey, DE1);
   des(ibuf, obuf);
@@ -33,7 +34,7 @@ static char* readpassword(char *buf) {
   char ibuf[9]={0};
   char tbuf[9]={0};
 
-  while (true) {
+  while (1) {
     printf("Password:\n");
     scanf("%8s",ibuf);
     if (strlen(ibuf) < 6) {
@@ -46,6 +47,7 @@ static char* readpassword(char *buf) {
     }
 
     printf("Verify:\n");
+    scanf("%8s",tbuf);
     if (strcmp(ibuf, tbuf) != 0) {
       fprintf(stderr,"Passwords don't match - try again\n");
       continue;
@@ -58,40 +60,38 @@ static char* readpassword(char *buf) {
 static void usage(char *prog)
 {
   fprintf(stderr,"usage: %s [file]\n", prog);
-  fprintf(stderr,"       %s -f\n", prog);
   exit(1);
 }
 
 int main(int argc, char** argv)
 {
   int encode = 0;
-  char *fname = ".vnc/passwd";
+  int i = 0;
+  char *fname = "/home/shiyanlou/.vnc/passwd";
 
-  for (int i = 1; i < argc; i++) {
+  for (i = 1; i < argc; i++) {
     if (strcmp(argv[i], "-e") == 0) {
-		encode = 1;
-    } else if (strncmp(argv[i], "-f", 2) == 0) {
-      return encrypt_pipe();
-    } else if (argv[i][0] == '-') {
-      usage(argv[0]);
-    } else if (!fname) {
-      fname = argv[i];
+      encode = 1;
     } else {
-      usage(argv[0]);
+      fname = argv[i];
     }
   }
 
-  if(encode) {
-	char buf[9];
-	char bufonly[9];
+  if(encode)
+  {
+    char ch;
+    char buf[9];
+    char bufonly[9];
     char *obfuscated = readpassword(buf);
     char *obfuscatedReadOnly = NULL;
 
-    fprintf(stderr, "Would you like to enter a view-only password (y/n)? ");
-    char yesno[3];
-    if (fgets(yesno, 3, stdin) != NULL && (yesno[0] == 'y' || yesno[0] == 'Y')) {
-      obfuscatedReadOnly = readpassword(bufonly);
+    if(!obfuscated)
+    {
+      exit(1);
     }
+    fprintf(stderr, "enter a view-only password?[y/n]\n");
+    if(scanf("%c%c", &ch,&ch)==2 && ch=='y')
+      obfuscatedReadOnly = readpassword(bufonly);
 
     FILE* fp = fopen(fname,"w");
     if (!fp) {
@@ -116,37 +116,42 @@ int main(int argc, char** argv)
   }
   else
   {
-	char ibuf[9];
-	char obuf[9];
+    char ibuf[9];
+    char obuf[9];
 
     FILE* fp = fopen(fname,"r");
-    if (!fp) {
-      fprintf(stderr,"Couldn't open %s for reading\n",fname);
-      exit(1);
+    if (!fp)
+    {
+       fprintf(stderr,"Couldn't open %s for reading\n",fname);
+       exit(1);
     }
 
-    if (fread(buf, 8, 1, fp) != 1) {
-      fprintf(stderr,"reading from %s failed\n",fname);
-      exit(1);
+    if (fread(ibuf, 8, 1, fp) != 1) {
+       fprintf(stderr,"reading from %s failed\n",fname);
+       exit(1);
     }
-	if(!decrypt(ibuf, obuf))
-	{
-		fprintf(stderr,"decrypt failed\n");
-		exit(1);
-	}
-	fprintf(stderr,"passwd:%8s\n",obuf);
-    if (fwrite(buf, 8, 1, fp) != 1) {
-        fprintf(stderr,"reading from %s failed\n",fname);
+    if(!decrypt(ibuf, obuf))
+    {
+	fprintf(stderr,"decrypt failed\n");
+	exit(1);
+    }
+    fprintf(stderr,"passwd:%-8s\n",obuf);
+    if (fread(ibuf, 1, 1, fp) != 1)
+    {
         exit(0);
-      }
     }
-	fprintf(stderr, "view-only password\n");
-	if(!decrypt(ibuf, obuf))
-	{
-		fprintf(stderr,"decrypt failed\n");
-		exit(1);
-	}
-	fprintf(stderr,"passwd:%8s\n",obuf);
+    if (fread(ibuf+1, 7, 1, fp) != 1)
+    {
+        fprintf(stderr,"reading view-only passwd from %s failed\n",fname);
+        exit(1);
+    }
+
+    if(!decrypt(ibuf, obuf))
+    {
+	fprintf(stderr,"decrypt view-only passwd failed\n");
+	exit(1);
+    }
+    fprintf(stderr,"view-only passwd:%-8s\n",obuf);
 
     fclose(fp);
   }
